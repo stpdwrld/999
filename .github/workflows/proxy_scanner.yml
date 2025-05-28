@@ -1,0 +1,84 @@
+name: Proxy Scanner
+
+on:
+  repository_dispatch:
+    types: [scan_proxy]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Download proxy file
+      id: download
+      run: |
+        FILE_URL=${{ github.event.client_payload.file_url }}
+        CHAT_ID=${{ github.event.client_payload.chat_id }}
+        curl -o input.txt "$FILE_URL"
+        echo "CHAT_ID=$CHAT_ID" >> $GITHUB_ENV
+        echo "FILE_URL=$FILE_URL" >> $GITHUB_ENV
+        echo "::set-output name=status::downloaded"
+        
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+        
+    - name: Run scanner
+      id: scanner
+      run: |
+        python scanner.py
+        echo "::set-output name=status::scanned"
+        
+    - name: Prepare results
+      id: prepare
+      run: |
+        # Combine results
+        echo "Active Proxies:" > result.txt
+        cat active.txt >> result.txt
+        echo -e "\nDead Proxies:" >> result.txt
+        cat dead.txt >> result.txt
+        
+        # Compress with maximum gzip compression
+        gzip -9 result.txt
+        
+        # Encode gzipped result to base64
+        BASE64_RESULT=$(base64 -w 0 result.txt.gz)
+        RESULT_SIZE=${#BASE64_RESULT}
+        
+        # Set outputs and environment variables
+        echo "RESULT_SIZE=$RESULT_SIZE" >> $GITHUB_ENV
+        echo "::set-output name=result::$BASE64_RESULT"
+        
+        # Debug logging
+        echo "Original size:" $(wc -c < result.txt)
+        echo "Compressed size:" $(wc -c < result.txt.gz)
+        echo "Base64 size:" $RESULT_SIZE
+        
+    - name: Check result size
+      run: |
+        MAX_SIZE=900000  # 900KB (Cloudflare Worker limit is 1MB)
+        if [ $RESULT_SIZE -gt $MAX_SIZE ]; then
+          echo "::error::Result too large ($RESULT_SIZE > $MAX_SIZE)"
+          exit 1
+        fi
+        
+    - name: Send results to Cloudflare Worker
+      run: |
+        WORKER_URL="https://telegram-vpn-bot.luckyzp77.workers.dev/webhook-result"
+        curl -v -X POST "$WORKER_URL" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "chatId": "'"$CHAT_ID"'",
+            "results": "'"${{ steps.prepare.outputs.result }}"'",
+            "originalSize": "'"$(wc -c < result.txt)"'",
+            "compressedSize": "'"$(wc -c < result.txt.gz)"'"
+          }'
+      if: ${{ !failure() }}
