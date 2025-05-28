@@ -72,7 +72,7 @@ jobs:
         
     - name: Send results to Cloudflare Worker
       run: |
-        WORKER_URL="https://telegram-vpn-bot.luckyzulfahmii6.workers.dev/webhook-result"
+        WORKER_URL="https://bot-cf.luckyzulfahmii6.workers.dev/webhook-result"
         curl -v -X POST "$WORKER_URL" \
           -H "Content-Type: application/json" \
           -d '{
