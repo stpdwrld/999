@@ -64,8 +64,8 @@ jobs:
         
     - name: Check result size
       run: |
-        MAX_SIZE = 52428800; // 50MB
-        if [ $RESULT_SIZE -gt $MAX_SIZE ]; then
+        MAX_SIZE=52428800  # 50MB
+        if [ "$RESULT_SIZE" -gt "$MAX_SIZE" ]; then
           echo "::error::Result too large ($RESULT_SIZE > $MAX_SIZE)"
           exit 1
         fi
